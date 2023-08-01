@@ -13,7 +13,7 @@ else:
 class RipFile:
    typeLookup = ["FLOAT", "UINT", "SINT"]
    typePackLookup = ["f", "L", "l"]
-   
+
    def __init__(self, filePath: str):
       self.parsed = False
       if not os.path.isfile(filePath):
@@ -26,7 +26,7 @@ class RipFile:
       self.shaderDir = os.path.join(os.path.dirname(self.fileDir), "Shaders")
       if not os.path.isdir(self.shaderDir):
          self.shaderDir = None
-   
+
    def parse(self, xyzOrder="xzy", uvOrder="uW", scale=1.0, keep2D=False, keepUntextured=False):
       parseStart = time.process_time()
       with open(self.filePath, 'rb') as self.file:
@@ -35,9 +35,9 @@ class RipFile:
             print("Invalid RIP signature. Continuing anyway, but this might not work...")
          if version != 4:
             print("Invalid RIP version. Expected {}, found {}. Continuing anyway, but this might not work...".format(4, version))
-         
+
          self.faceCount, self.vertexCount, self.vertexSize, self.textureCount, self.shaderCount, self.semanticCount = self.__read('LLLLLL', 24)
-         
+
          is3D = False
          self.semantics = []
          for i in range(self.semanticCount):
@@ -51,29 +51,29 @@ class RipFile:
             self.semantics.append(semanticData)
             if semanticData['nameUpper'] == "POSITION" and semanticData['typeCount'] == 3:
                is3D = True
-         
+
          if not is3D and not keep2D:
             print("{}: skipping because not 3D".format(self.fileLabel))
             return False
-         
+
          self.textures = []
          for i in range(self.textureCount):
             texture = {'fileName': self.__readString()}
             texture['filePath'] = os.path.join(self.fileDir, texture['fileName'])
             self.textures.append(texture)
-         
+
          if len(self.textures) == 0 and not keepUntextured:
             print("{}: skipping because untextured".format(self.fileLabel))
             return False
-         
+
          self.shaders = []
          for i in range(self.shaderCount):
             self.shaders.append(RipShader(self.shaderDir, self.__readString(), self.textures))
-         
+
          self.faces = []
          for i in range(self.faceCount):
             self.faces.append(self.__read('LLL', 12))
-         
+
          self.pMax = []
          self.pMin = []
          self.vertexes = []
@@ -138,15 +138,15 @@ class RipFile:
                else:
                   vertex[semantic['label']] = data
             self.vertexes.append(vertex)
-         
+
          parseTime = time.process_time() - parseStart
          print("{}: parse took {}s".format(self.fileLabel, parseTime))
          self.parsed = True
       return True
-   
+
    def __read(self, format, size):
       return struct.unpack(format, self.file.read(size))
-   
+
    def __readString(self) -> str:
       result = ""
       done = False
@@ -157,7 +157,7 @@ class RipFile:
          else:
             result += chr(val)
       return result
-   
+
    def seemsEqual(self, other):
       if not isinstance(other, RipFile):
          return False
@@ -180,7 +180,7 @@ class RipFile:
             if self.pMin[i] != other.pMin[i]:
                return False
       return True
-   
+
    def __str__(self) -> str:
       result = []
       result.append("--- Begin str(RipFile) ---")
@@ -204,7 +204,7 @@ class RipFile:
             result.append("    {name}: idx={index} offset={offset} size={size} types={typeCount} ({typeList})".format(**semantic))
       result.append("---  End str(RipFile)  ---")
       return "\n".join(result)
-   
+
    def outputData(self):
       if self.parsed:
          with open("vertexLog.tsv", 'w') as log:
@@ -219,7 +219,7 @@ class RipFile:
                log.write("\n")
       else:
          print("You must parse() before outputData()")
-      
+
 
 # Testing, IGNORE ME
 if __name__ == "__main__":

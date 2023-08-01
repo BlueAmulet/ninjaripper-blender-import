@@ -19,7 +19,7 @@ class ImportRIP(bpy.types.Operator, ImportHelper):
    bl_label = 'Import NinjaRipper (*.rip)'
    bl_options = {'UNDO'}
    filename_ext = ".rip"
-   
+
    filter_glob: StringProperty(default="*.rip", options={'HIDDEN'}, maxlen=255)
    xyzOrder: bpy.props.EnumProperty(items=(('Xzy', '-X, Z, Y', '-X, Z, Y'),
                                            ('xyz', 'X, Y, Z',  'X, Y, Z')), name="Vertex Order")
@@ -60,13 +60,13 @@ class ImportRIP(bpy.types.Operator, ImportHelper):
          for file in os.listdir(ripFiles[0].fileDir):
             if file != ripFiles[0].fileName and file.lower().endswith(".rip"):
                ripFiles.append(RipFile(os.path.join(ripFiles[0].fileDir, file)))
-               
+
       for rip in ripFiles:
          rip.parse(xyzOrder=self.xyzOrder, uvOrder=self.uvOrder, scale=self.scale, keep2D=self.keep2D, keepUntextured=self.keepUntextured)
       numBefore = len(ripFiles)
       ripFiles = list(filter(lambda r: r.parsed, ripFiles))
       print("Total RIP files skipped: {}".format(numBefore - len(ripFiles)))
-      
+
       if self.removeDuplicates:
          ripFilesFinal = []
          for rip in ripFiles:
@@ -83,7 +83,7 @@ class ImportRIP(bpy.types.Operator, ImportHelper):
          print("Total duplicate meshes skipped: {}".format(len(ripFiles) - len(ripFilesFinal)))
       else:
          ripFilesFinal = ripFiles
-         
+
       for rip in ripFilesFinal:
          mesh = RipMesh(rip)
          mesh.loadMaterial(self.reuseMats, self.importShaders)

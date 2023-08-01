@@ -15,7 +15,7 @@ class RipShader:
    cbRegEx = re.compile("//\s+([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+);\s*//\s+Offset:\s+(\d+)\s+Size:\s+(\d+)")
    rRegEx = re.compile("//\s+([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)\s+(\d+)\s+(\d+)")
    ioRegEx = re.compile("//\s+([a-zA-Z0-9_]+)\s+(\d+)\s+([xyzw]+)\s+(\d+)\s+([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)\s+([xyzw]+)")
-   
+
    def __init__(self, fileDir, fileName, textures):
       self.fileDir = fileDir
       self.fileName = fileName
@@ -31,7 +31,7 @@ class RipShader:
       self.textures = textures
       self.shaderVersion = ""
       self.globalFlags = []
-   
+
    def parse(self):
       loadStart = time.process_time()
       self.data = {
@@ -62,37 +62,37 @@ class RipShader:
                      self.currentBlock['name'] = line[11:].strip()
                      self.currentBlock['type'] = "cbuffer"
                      self.currentBlock['status'] = 1
-                     
+
                   elif line.startswith("// Resource Bindings:"):
                      self.currentBlock['name'] = "resources"
                      self.currentBlock['type'] = "other"
                      self.currentBlock['status'] = 1
-                     
+
                   elif line.startswith("// Input signature:"):
                      self.currentBlock['name'] = "input"
                      self.currentBlock['type'] = "other"
                      self.currentBlock['status'] = 1
-                     
+
                   elif line.startswith("// Output signature:"):
                      self.currentBlock['name'] = "output"
                      self.currentBlock['type'] = "other"
                      self.currentBlock['status'] = 1
-                     
+
                elif self.currentBlock['status'] == 1:
                   if self.currentBlock['type'] == "cbuffer" and line.startswith("// {"):
                      self.currentBlock['status'] = 2
                      self.data['buffers'][self.currentBlock['name']] = {}
-                     
+
                   elif self.currentBlock['type'] == "other" and line.startswith("// Name"):
                      self.currentBlock['status'] = 2
-                     
+
                elif self.currentBlock['status'] == 2:
                   if self.currentBlock['type'] == "cbuffer":
                      if line.startswith("// }"):
                         self.currentBlock['name'] = None
                         self.currentBlock['type'] = None
                         self.currentBlock['status'] = 0
-                        
+
                      elif line.find("[unused]") == -1:
                         match = self.cbRegEx.search(line)
                         if match:
@@ -106,13 +106,13 @@ class RipShader:
                                  self.data['buffers'][self.currentBlock['name']][idx][part] = {'name':name+"."+part, 'originalSize':size}
                               else:
                                  self.data['buffers'][self.currentBlock['name']][idx] = {part:{'name':name+"."+part, 'originalSize':size}}
-                                 
+
                   elif self.currentBlock['type'] == "other":
                      if line.strip() == "//":
                         self.currentBlock['name'] = None
                         self.currentBlock['type'] = None
                         self.currentBlock['status'] = 0
-                        
+
                      elif self.currentBlock['name'] == "resources":
                         match = self.rRegEx.search(line)
                         if match:
@@ -130,7 +130,7 @@ class RipShader:
                                  print("Buffer resource declaration refers to undefined buffer '{}' (line {})".format(name, self.currentLine))
                            elif type == "sampler":
                               self.data['resources']['s'+slot] = {'name':name}
-                              
+
                      elif self.currentBlock['name'] == "input" or self.currentBlock['name'] == "output":
                         match = self.ioRegEx.search(line)
                         if match:
@@ -155,23 +155,23 @@ class RipShader:
       self.parsed = True
       loadTime = time.process_time() - loadStart
       print("{}: Shader parse took {}s".format(self.fileName, loadTime))
-   
+
    def handleASM(self, line):
       words = self.parseASM(line)
       if words[0] == "ret":
          return False
-         
+
       elif words[0].startswith("vs_") or words[0].startswith("ps_"):
          self.shaderVersion = words[0]
-         
+
       elif words[0] == "dcl_sampler":
          pass
          # Don't know what to do with these, probably nothing
          # Different samplers require different handling, but there's no way to automatically detect what
-         
+
       elif words[0] == "dcl_globalFlags":
          self.globalFlags += words[1:]
-         
+
       elif words[0] == "dcl_constantbuffer":
          if words[2] == "immediateIndexed":
             parts = words[1].split("[")
@@ -188,11 +188,11 @@ class RipShader:
                print("Invalid constant buffer declaration {} (line {})".format(words[1], self.currentLine))
          else:
             print("Unsupported constant buffer access pattern {} (line {})".format(words[2], self.currentLine))
-            
+
       elif words[0] == "dcl_resource_texture2d":
          pass
          # Deal with these during sample_indexable
-         
+
       elif words[0] == "dcl_input" or words[0] == "dcl_input_ps":
          if words[0] == "dcl_input":
             parts = words[1].split(".")
@@ -209,7 +209,7 @@ class RipShader:
          else:
             node = RipNode(self, "Value")
             self.registers[parts[0]] = node.output()
-            
+
       elif words[0] == "dcl_output":
          parts = words[1].split(".")
          if len(parts) > 1:
@@ -219,11 +219,11 @@ class RipShader:
                self.registers[parts[0]][c] = None
          else:
             self.registers[parts[0]] = None
-            
+
       elif words[0] == "dcl_temps":
          for i in range(int(words[1])):
             self.registers['r'+str(i)] = {'x':None, 'y':None, 'z':None, 'w':None}
-            
+
       elif words[0] == "dcl_indexableTemp":
          parts = words[1].split("[")
          if len(parts) > 1 and len(words) == 3:
@@ -235,19 +235,19 @@ class RipShader:
                   self.registers[parts[0]][i]["xyzw"[c]] = None
          else:
             print("Invalid indexableTemp declaration {} (line {})".format(words, self.currentLine))
-      
+
       elif words[0] == "if" or  words[0] == "if_nz" or  words[0] == "if_z":
          print("if statements currently unsupported (line {})".format(self.currentLine))
          self.ignoring = True
       elif words[0] == "endif":
          self.ignoring = False
-      
+
       else:
          words[0] = self.parseASMInstruction(words[0])
          words[1] = self.parseASMDest(words[1])
          for i in range(2, len(words)):
             words[i] = self.parseASMSrc(words[i])
-            
+
          if words[0][0] == "sample_indexable":
             texnode = RipNode(self, "TexImage")
             sepnode = RipNode(self, "SeparateRGB")
@@ -268,7 +268,7 @@ class RipShader:
             texnode.input(0, uvnode.output())
             texnode.options['sampler'] = self.data['resources'][words[4][0][1]]
             self.setRegister(words[1], [self.getRegisterFromTuple(word) for word in words[3]])
-            
+
          elif words[0][0] in RipNode.basicMaths:
             # prepare for an output for each possible input component
             outputs = [None] * reduce(lambda a,b: max(len(b), a), words[2:], 0)
@@ -285,7 +285,7 @@ class RipShader:
                   node.input(i-2, self.getOutputFromSrcTerm(words[i][cReal]))
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "exp":
             # prepare for an output for each possible input component
             outputs = [None] * len(words[2])
@@ -300,7 +300,7 @@ class RipShader:
                node.input(1, self.getOutputFromSrcTerm(words[2][cReal]))
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "log":
             # prepare for an output for each possible input component
             outputs = [None] * len(words[2])
@@ -315,7 +315,7 @@ class RipShader:
                node.input(1, 2.0)
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "ge":
             # prepare for an output for each possible input component
             outputs = [None] * max(len(words[2]), len(words[3]))
@@ -330,7 +330,7 @@ class RipShader:
                node.input(1, self.getOutputFromSrcTerm(words[2][cReal]))
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "and":
             # prepare for an output for each possible input component
             outputs = [None] * max(len(words[2]), len(words[3]))
@@ -348,7 +348,7 @@ class RipShader:
                else:
                   print("unsupported command 'and' only works with specific inputs (line {})".format(self.currentLine))
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "dp2" or words[0][0] == "dp3" or words[0][0] == "dp4":
             dimensions = int(words[0][0][2])
             nodes = []
@@ -366,7 +366,7 @@ class RipShader:
                nodes.append(node)
             nodes[len(nodes)-1].options['use_clamp'] = (words[0][1] & 1 == 1)
             self.setRegister(words[1], [nodes[len(nodes)-1].output()])
-            
+
          elif words[0][0] == "mov" or words[0][0] == "utof":
             # prepare for an output for each possible input component
             outputs = [None] * len(words[2])
@@ -381,7 +381,7 @@ class RipShader:
                node.input(1, 0.0)
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "movc":
             # prepare for an output for each possible input component
             outputs = [None] * max(len(words[2]), len(words[3]), len(words[4]))
@@ -413,7 +413,7 @@ class RipShader:
                finalnode.input(1, nonode.output())
                outputs[cReal] = finalnode.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "bfi":
             # prepare for an output for each possible input component
             outputs = [None] * max(len(words[2]), len(words[3]), len(words[4]), len(words[5]))
@@ -434,7 +434,7 @@ class RipShader:
                node.input(2, self.getOutputFromSrcTerm(words[5][cReal]))
                outputs[cReal] = node.output()
             self.setRegister(words[1], outputs)
-            
+
          elif words[0][0] == "ne":
             # prepare for an output for each possible input component
             outputs = [None] * max(len(words[2]), len(words[3]))
@@ -453,25 +453,25 @@ class RipShader:
                node2.input(1, node1.output())
                outputs[cReal] = node2.output()
             self.setRegister(words[1], outputs)
-            
+
          else:
             print("Unhandled ASM instruction \"{}\" (line {})".format(words[0], self.currentLine))
       return True
-   
+
    def parseASM(self, line):
       """Parses a line of HLSL ASM into something this script can understand
-      
+
       Parameters
       ----------
       line : str
          the ASM instruction line
-      
+
       Returns
       -------
       list
          the ASM instruction split by terms
       """
-      
+
       result = []
       subresult = []
       bStart = 0
@@ -510,15 +510,15 @@ class RipShader:
       if len(line) > bStart:
          result.append(line[bStart:])
       return result
-   
+
    def parseASMInstruction(self, term):
       """Parses an ASM instruction name into something this script can understand
-      
+
       Parameters
       ----------
       term : str
          the ASM instruction name
-      
+
       Returns
       -------
       tuple
@@ -526,21 +526,21 @@ class RipShader:
             str, the unmodified instruction
             int, bitwise, modifiers of the instruction: 1=saturate
       """
-      
+
       instruction = term.split("(")
       if instruction[0].endswith("_sat"):
          return (instruction[0][:-4], 1)
       else:
          return (instruction[0], 0)
-   
+
    def parseASMDest(self, term):
       """Parses a dest term of an ASM instruction into something this script can understand
-      
+
       Parameters
       ----------
       term : str
          a term of the ASM instruction
-      
+
       Returns
       -------
       tuple
@@ -550,7 +550,7 @@ class RipShader:
                if list[2], it's a indexed register, first element is the name, second is the index
             list, indexes of the destination components as given by the mask, or None if there was no mask
       """
-      
+
       termParts = term.split(".")
       destParts = termParts[0].split("[")
       if len(destParts) > 1:
@@ -575,18 +575,18 @@ class RipShader:
 
    def parseASMSrc(self, term):
       """Parses a src term of an ASM instruction into something this script can understand
-      
+
       Parameters
       ----------
       term : str
          a term of the ASM instruction
-      
+
       Returns
       -------
       list
          a list of components to be used by the instruction, each element either a float or a tuple (see parseASMSwizzle)
       """
-      
+
       if type(term) is list:
          for w in range(len(term)):
             if term[w].startswith("0x"):
@@ -596,15 +596,15 @@ class RipShader:
          return term
       else:
          return self.parseASMSwizzle(term)
-   
+
    def parseASMSwizzle(self, term):
       """Parses a single ASM instruction term with swizzle into something this script can understand
-      
+
       Parameters
       ----------
       term : str
          a term of the ASM instruction
-      
+
       Returns
       -------
       list
@@ -615,7 +615,7 @@ class RipShader:
                if list[2], it's a indexed register, first element is the name, second is the index
             str, one of the components of this swizzle, or None if there was no swizzle
       """
-      
+
       mod = 0
       if term.startswith("-"):
          mod += 1
@@ -639,21 +639,21 @@ class RipShader:
          return [(mod, srcParts, None)]
       else:
          return [(mod, termParts[0], None)]
-   
+
    def getRegisterFromTuple(self, term):
       """Gets the register referred to by the given tuple parsed by parseASMSwizzle
-      
+
       Parameters
       ----------
       term : tuple
          a 3-element tuple from parseASMSwizzle
-      
+
       Returns
       -------
       RipNodeOutput
          the element of self.registers
       """
-      
+
       if(type(term) is tuple and len(term) == 3):
          if type(term[1]) is list:
             return self.registers[term[1][0]][term[1][1]][term[2]]
@@ -661,7 +661,7 @@ class RipShader:
             return self.registers[term[1]][term[2]]
       else:
          raise TypeError("Argument of getRegisterFromTuple must be a 3-element tuple, {} given (line {})".format(term, self.currentLine))
-   
+
    def getOutputFromSrcTerm(self, term):
       if type(term) is tuple:
          reg = self.getRegisterFromTuple(term)
@@ -681,7 +681,7 @@ class RipShader:
       else:
          print("Invalid term '{}' (line {})".format(term, self.currentLine))
          return None
-   
+
    def setRegister(self, dest, nodeOutputs):
       if dest[1] is None:
          if type(dest[0]) is list:
@@ -700,7 +700,7 @@ class RipShader:
             target['xyzw'[dest[1][0]]] = nodeOutputs[0]
          else:
             raise ValueError("Destination components somehow empty (line {})".format(self.currentLine))
-   
+
    def __str__(self) -> str:
       result = []
       result.append("--- Begin str(RipShader) ---")
@@ -716,7 +716,7 @@ class RipShader:
 class RipNode:
    """Corresponds to a node in a Blender material, but without any references to the Blender API
    """
-   
+
    basicMaths = {
       'add': {'operation':"ADD"},
       'div': {'operation':"DIVIDE"},
@@ -733,7 +733,7 @@ class RipNode:
       'rsq': {'operation':"INVERSE_SQRT"},
       'sqrt': {'operation':"SQRT"},
    }
-   
+
    def __init__(self, shader, type):
       self.shader = shader
       self.type = type
@@ -744,7 +744,7 @@ class RipNode:
       self.shader.nodes.append(self)
       self.blenderNode = None
       self.handled = False
-   
+
    def traverse(self, prev=None):
       if not self.handled:
          for id in self.inputs:
@@ -758,7 +758,7 @@ class RipNode:
             else:
                print("Value: ".format(self.inputs[id].defaultValue))
          self.handled = True
-   
+
    def input(self, id=0, connect=None):
       if id not in self.inputs:
          self.inputs[id] = RipNodeInput(self, id)
@@ -767,17 +767,17 @@ class RipNode:
       elif connect is not None:
          self.inputs[id].connect(connect)
       return self.inputs[id]
-   
+
    def output(self, id=0, connect=None):
       if id not in self.outputs:
          self.outputs[id] = RipNodeOutput(self, id)
       if connect is not None:
          self.outputs[id].connect(connect)
       return self.outputs[id]
-   
+
    def __repr__(self):
       return str(self)
-   
+
    def __str__(self):
       return "<{} node ({}) created at line {}>".format(self.type, self.options['operation'] if 'operation' in self.options else "", self.createdLine)
 
@@ -786,7 +786,7 @@ class RipNodeOutput:
       self.node = node
       self.id = id
       self.connections = []
-   
+
    def connect(self, input, oneWay=False):
       if isinstance(input, RipNodeInput):
          self.connections.append(input)
@@ -795,10 +795,10 @@ class RipNodeOutput:
       else:
          raise TypeError("Tried to connect something other than a RipNodeInput ({}) to a RipNodeOutput (line {})".format(type(input), self.node.shader.currentLine))
       return self
-   
+
    def __repr__(self):
       return str(self)
-   
+
    def __str__(self):
       return "<RipNodeOutput {} of {}>".format(self.id, self.node)
 
@@ -809,7 +809,7 @@ class RipNodeInput:
       self.connection = None
       self.defaultValue = 0.5
       self.handled = False # for use by RipMesh
-   
+
    def connect(self, output, oneWay=False):
       if isinstance(output, RipNodeOutput):
          if self.connection is not None:
@@ -821,9 +821,9 @@ class RipNodeInput:
       else:
          raise TypeError("Tried to connect something other than a RipNodeOutput ({}) to a RipNodeInput (line {})".format(type(output), self.node.shader.currentLine))
       return self
-   
+
    def __repr__(self):
       return str(self)
-   
+
    def __str__(self):
       return "<RipNodeInput {} of {}>".format(self.id, self.node)
