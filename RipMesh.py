@@ -1,8 +1,10 @@
 import bpy
-import bmesh
 import mathutils
 import hashlib
 import time
+import zlib
+import os
+import shutil
 from math import floor
 
 class RipMesh:
@@ -13,11 +15,9 @@ class RipMesh:
 
    def loadRip(self):
       loadStart = time.process_time()
-      self.bmesh = bmesh.new()
-      self.bmesh.from_mesh(self.mesh)
       bpy.context.collection.objects.link(self.object)
       bpy.context.view_layer.objects.active = self.object
-      bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+      bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
       positions = None
       normals = None
       uvs = []
@@ -27,27 +27,41 @@ class RipMesh:
          if sem['nameUpper'] == "NORMAL" and normals is None:
             normals = sem
          if sem['nameUpper'] == "TEXCOORD":
-            uvs.append((sem, self.bmesh.loops.layers.uv.new()))
+            uvs.append(sem)
 
-      for vert in self.ripFile.vertexes:
-         vtx = self.bmesh.verts.new(vert[positions['label']])
-         vtx.normal = mathutils.Vector(vert[normals['label']][0:3]) # I've seen rips with 4-dimensional normals, no idea what the deal is with that
+      vertMap = {}
+      vertSet = {}
+      bpyVertices = []
+      bpyNormals = []
+      for i, vert in enumerate(self.ripFile.vertexes):
+         vert_key = tuple(sorted([(k, tuple(vert[k])) for k in vert if k != "index" and not k.startswith("TEXCOORD")]))
+         if vert_key in vertSet:
+            vertMap[i] = vertSet[vert_key]
+         else:
+            vertMap[i] = len(vertSet)
+            vertSet[vert_key] = len(vertSet)
+            bpyVertices.append(vert[positions['label']])
+            if normals:
+                bpyNormals.append(vert[normals['label']][0:3]) # I've seen rips with 4-dimensional normals, no idea what the deal is with that
 
-      self.bmesh.verts.ensure_lookup_table()
+      bpyFaces = []
       for f in self.ripFile.faces:
-         try:
-            face = self.bmesh.faces.new((self.bmesh.verts[f[0]], self.bmesh.verts[f[1]], self.bmesh.verts[f[2]]))
-            face.smooth = True
-            face.material_index = 0
+         bpyFaces.append((vertMap[f[0]], vertMap[f[1]], vertMap[f[2]]))
 
+      self.mesh.from_pydata(bpyVertices, [], bpyFaces)
+      self.mesh.polygons.foreach_set('use_smooth', (True,)*len(bpyFaces))
+
+      for i, uv in enumerate(uvs):
+         uvs[i] = (uv, self.mesh.uv_layers.new(name='UVMap' + ('' if i == 0 else str(i + 1))))
+      for i, face in enumerate(self.mesh.polygons):
+         ripFace = self.ripFile.faces[i]
+         for uv in uvs:
             for uv_set_loop in range(3):
-               for z in range(len(uvs)):
-                  face.loops[uv_set_loop][uvs[z][1]].uv = self.ripFile.vertexes[f[uv_set_loop]][uvs[z][0]['label']]
-         except Exception as e:
-            print(str(e))
-      bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
-      self.bmesh.to_mesh(self.mesh)
-      self.bmesh.free()
+               uv[1].data[face.loop_indices[uv_set_loop]].uv = self.ripFile.vertexes[ripFace[uv_set_loop]][uv[0]['label']]
+
+      if len(bpyNormals) > 0:
+         self.mesh.normals_split_custom_set_from_vertices(bpyNormals)
+      self.mesh.use_auto_smooth = True
       # Toggling seems to fix weird mesh appearance in some cases.
       bpy.ops.object.mode_set(mode='EDIT', toggle=False)
       bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -55,13 +69,15 @@ class RipMesh:
       print("{}: RIP load took {}s".format(self.ripFile.fileLabel, loadTime))
       return self.mesh
 
-   def loadMaterial(self, reuseMats=True, importShaders=False):
+   def loadMaterial(self, reuseMats=True, packTextures=True, importShaders=False):
       self.material = None
       if len(self.ripFile.textures) > 0:
-         texStr = ""
+         texHashes = []
          for t in self.ripFile.textures:
-            texStr += t['fileName']
-         materialName = hashlib.md5(texStr.encode()).hexdigest()
+            with open(t['filePath'], 'rb') as f:
+               texHashes.append(hashlib.md5(f.read()).hexdigest())
+         texHashes.sort()
+         materialName = hashlib.md5(','.join(texHashes).encode('utf-8')).hexdigest()
       else:
          materialName = None
 
@@ -75,13 +91,30 @@ class RipMesh:
                if shader.shaderType == 1:
                   self.loadShader(shader)
          else:
+            bsdf = self.material.node_tree.nodes["Principled BSDF"]
+            bsdf.inputs["Roughness"].default_value = 1
+            bsdf.inputs["Specular"].default_value = 0
             for t in range(len(self.ripFile.textures)):
                tex = self.material.node_tree.nodes.new('ShaderNodeTexImage')
-               tex.image = bpy.data.images.load(self.ripFile.textures[t]['filePath'], check_existing=True)
-               tex.image.colorspace_settings.is_data = True
-               tex.image.colorspace_settings.name = "Non-Color"
+               with open(self.ripFile.textures[t]['filePath'], 'rb') as f:
+                  texHash = hex(zlib.crc32(f.read()))[2:].zfill(8).upper() + os.path.splitext(self.ripFile.textures[t]['fileName'])[1]
+               if texHash in bpy.data.images:
+                  tex.image = bpy.data.images[texHash]
+               else:
+                  #copyName = "Z:\\textures\\" + texHash
+                  #shutil.copy2(self.ripFile.textures[t]['filePath'], copyName)
+                  copyName = self.ripFile.textures[t]['filePath']
+                  tex.image = bpy.data.images.load(copyName, check_existing=True)
+                  tex.image.name = texHash
+                  if packTextures:
+                     tex.image.reload()
+                     tex.image.pack()
+                     tex.image.filepath_raw = texHash
                tex.hide = True
                tex.location = [-300, -50*t]
+               if self.ripFile.textures[t]['filePath'].lower().endswith('_1.dds'):
+                  self.material.node_tree.links.new(bsdf.inputs['Base Color'], tex.outputs['Color'])
+                  self.material.node_tree.links.new(bsdf.inputs['Alpha'],      tex.outputs['Alpha'])
 
       if self.material is not None:
          self.object.data.materials.append(self.material)
